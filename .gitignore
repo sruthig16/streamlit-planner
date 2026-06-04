@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+app_old.py
+app_before_edit_task.py
+app_before_plan_management.py
+app_before_plan_management.py
+app_before_plan_management.py
+app_before_edit_task.py
+app_before_plan_management.py
