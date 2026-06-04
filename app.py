@@ -1,4 +1,5 @@
-﻿from datetime import date, datetime
+from datetime import date, datetime
+from html import escape
 
 import streamlit as st
 
@@ -23,6 +24,96 @@ from database import (
 )
 
 
+def apply_custom_css():
+    st.markdown(
+        """
+        <style>
+        .main-title {
+            font-size: 34px;
+            font-weight: 700;
+            margin-bottom: 0px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-top: 0px;
+            margin-bottom: 25px;
+        }
+
+        .task-card {
+            border: 1px solid #e6e6e6;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+            background-color: #ffffff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .task-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .task-meta {
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 4px;
+        }
+
+        .priority-low {
+            background-color: #e8f5e9;
+            color: #256029;
+            padding: 3px 8px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .priority-medium {
+            background-color: #fff8e1;
+            color: #7a5c00;
+            padding: 3px 8px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .priority-high {
+            background-color: #ffebee;
+            color: #b71c1c;
+            padding: 3px 8px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .bucket-heading {
+            font-size: 18px;
+            font-weight: 700;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #eeeeee;
+            margin-bottom: 12px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def priority_badge(priority):
+    css_class = {
+        "Low": "priority-low",
+        "Medium": "priority-medium",
+        "High": "priority-high",
+    }.get(priority, "priority-medium")
+
+    return f"<span class='{css_class}'>{escape(priority)}</span>"
+
+
 def parse_date(date_text):
     if not date_text:
         return date.today()
@@ -39,12 +130,17 @@ st.set_page_config(
 )
 
 init_db()
+apply_custom_css()
 
 if "selected_plan_id" not in st.session_state:
     st.session_state.selected_plan_id = None
 
 
-st.title("Planner App")
+st.markdown("<div class='main-title'>Planner App</div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='subtitle'>Create plans, organize tasks, and track progress.</div>",
+    unsafe_allow_html=True,
+)
 
 st.sidebar.title("My Plans")
 
@@ -140,7 +236,10 @@ with st.sidebar.form("delete_plan_form"):
 buckets = get_buckets(selected_plan_id)
 tasks = get_tasks(selected_plan_id)
 
-st.header(current_plan["name"])
+st.markdown(
+    f"<div class='main-title'>{escape(current_plan['name'])}</div>",
+    unsafe_allow_html=True,
+)
 
 tab1, tab2 = st.tabs(["Grid", "Board"])
 
@@ -177,7 +276,15 @@ with tab2:
 
     for index, bucket in enumerate(buckets):
         with columns[index]:
-            st.markdown(f"### {bucket['name']}")
+            bucket_tasks = [
+                task for task in tasks
+                if task["bucket_id"] == bucket["id"]
+            ]
+
+            st.markdown(
+                f"<div class='bucket-heading'>{escape(bucket['name'])} ({len(bucket_tasks)})</div>",
+                unsafe_allow_html=True,
+            )
 
             with st.expander("+ Add task"):
                 with st.form(f"add_task_form_{bucket['id']}"):
@@ -217,186 +324,193 @@ with tab2:
                         else:
                             st.warning("Task title is required.")
 
-            bucket_tasks = [
-                task for task in tasks
-                if task["bucket_id"] == bucket["id"]
-            ]
-
             if bucket_tasks:
                 for task in bucket_tasks:
-                    with st.container(border=True):
-                        if task["labels"]:
-                            st.caption(f"Labels: {task['labels']}")
+                    completed_items, total_items = get_checklist_progress(task["id"])
 
-                        if task["completed"]:
-                            st.markdown(f"~~**{task['title']}**~~")
-                            st.caption("Completed")
+                    title_text = escape(task["title"])
+
+                    if task["completed"]:
+                        title_html = f"<s>{title_text}</s>"
+                    else:
+                        title_html = title_text
+
+                    card_html = f"""
+                    <div class="task-card">
+                        <div class="task-title">{title_html}</div>
+                    """
+
+                    if task["description"]:
+                        card_html += f"<div class='task-meta'>{escape(task['description'])}</div>"
+
+                    if task["labels"]:
+                        card_html += f"<div class='task-meta'>Labels: {escape(task['labels'])}</div>"
+
+                    if task["due_date"]:
+                        card_html += f"<div class='task-meta'>Due: {escape(task['due_date'])}</div>"
+
+                    if task["assignee"]:
+                        card_html += f"<div class='task-meta'>Assigned to: {escape(task['assignee'])}</div>"
+
+                    card_html += f"<div class='task-meta'>Checklist: {completed_items}/{total_items}</div>"
+                    card_html += f"<div class='task-meta'>Priority: {priority_badge(task['priority'])}</div>"
+
+                    if task["completed"]:
+                        card_html += "<div class='task-meta'>Status: Completed</div>"
+
+                    card_html += "</div>"
+
+                    st.markdown(card_html, unsafe_allow_html=True)
+
+                    with st.expander("Manage task"):
+                        st.markdown("**Move / Complete / Delete**")
+
+                        bucket_names = [item["name"] for item in buckets]
+                        bucket_id_map = {
+                            item["name"]: item["id"]
+                            for item in buckets
+                        }
+
+                        current_bucket_index = bucket_names.index(task["bucket_name"])
+
+                        with st.form(f"manage_task_form_{task['id']}"):
+                            selected_bucket_name = st.selectbox(
+                                "Move to bucket",
+                                bucket_names,
+                                index=current_bucket_index,
+                            )
+
+                            completed = st.checkbox(
+                                "Completed",
+                                value=bool(task["completed"]),
+                            )
+
+                            update_clicked = st.form_submit_button("Update task status")
+                            delete_clicked = st.form_submit_button("Delete task")
+
+                            if update_clicked:
+                                selected_bucket_id = bucket_id_map[selected_bucket_name]
+
+                                update_task_status(
+                                    task_id=task["id"],
+                                    bucket_id=selected_bucket_id,
+                                    completed=completed,
+                                )
+
+                                st.rerun()
+
+                            if delete_clicked:
+                                delete_task(task["id"])
+                                st.rerun()
+
+                        st.divider()
+                        st.markdown("**Edit task details**")
+
+                        priority_options = ["Low", "Medium", "High"]
+
+                        if task["priority"] in priority_options:
+                            priority_index = priority_options.index(task["priority"])
                         else:
-                            st.markdown(f"**{task['title']}**")
+                            priority_index = 1
 
-                        if task["description"]:
-                            st.write(task["description"])
+                        with st.form(f"edit_task_form_{task['id']}"):
+                            edited_title = st.text_input(
+                                "Task title",
+                                value=task["title"],
+                            )
 
-                        if task["due_date"]:
-                            st.caption(f"Due: {task['due_date']}")
+                            edited_description = st.text_area(
+                                "Description",
+                                value=task["description"] or "",
+                            )
 
-                        st.caption(f"Priority: {task['priority']}")
+                            keep_due_date = st.checkbox(
+                                "Use due date",
+                                value=bool(task["due_date"]),
+                            )
 
-                        if task["assignee"]:
-                            st.caption(f"Assigned to: {task['assignee']}")
+                            edited_due_date = None
 
-                        completed_items, total_items = get_checklist_progress(task["id"])
-                        st.caption(f"Checklist: {completed_items}/{total_items}")
-
-                        with st.expander("Manage task"):
-                            st.markdown("**Move / Complete / Delete**")
-
-                            bucket_names = [item["name"] for item in buckets]
-                            bucket_id_map = {
-                                item["name"]: item["id"]
-                                for item in buckets
-                            }
-
-                            current_bucket_index = bucket_names.index(task["bucket_name"])
-
-                            with st.form(f"manage_task_form_{task['id']}"):
-                                selected_bucket_name = st.selectbox(
-                                    "Move to bucket",
-                                    bucket_names,
-                                    index=current_bucket_index,
+                            if keep_due_date:
+                                edited_due_date = st.date_input(
+                                    "Due date",
+                                    value=parse_date(task["due_date"]),
                                 )
 
-                                completed = st.checkbox(
-                                    "Completed",
-                                    value=bool(task["completed"]),
-                                )
+                            edited_priority = st.selectbox(
+                                "Priority",
+                                priority_options,
+                                index=priority_index,
+                            )
 
-                                update_clicked = st.form_submit_button("Update task status")
-                                delete_clicked = st.form_submit_button("Delete task")
+                            edited_assignee = st.text_input(
+                                "Assignee",
+                                value=task["assignee"] or "",
+                            )
 
-                                if update_clicked:
-                                    selected_bucket_id = bucket_id_map[selected_bucket_name]
+                            edited_labels = st.text_input(
+                                "Labels/tags",
+                                value=task["labels"] or "",
+                            )
 
-                                    update_task_status(
+                            save_edit_clicked = st.form_submit_button("Save edited task")
+
+                            if save_edit_clicked:
+                                if edited_title.strip():
+                                    update_task_details(
                                         task_id=task["id"],
-                                        bucket_id=selected_bucket_id,
-                                        completed=completed,
+                                        title=edited_title.strip(),
+                                        description=edited_description.strip(),
+                                        due_date=edited_due_date,
+                                        priority=edited_priority,
+                                        assignee=edited_assignee.strip(),
+                                        labels=edited_labels.strip(),
                                     )
+                                    st.rerun()
+                                else:
+                                    st.warning("Task title is required.")
 
+                        st.divider()
+                        st.markdown("**Checklist**")
+
+                        checklist_items = get_checklist_items(task["id"])
+
+                        if checklist_items:
+                            for item in checklist_items:
+                                item_done = st.checkbox(
+                                    item["text"],
+                                    value=bool(item["completed"]),
+                                    key=f"checklist_item_{item['id']}",
+                                )
+
+                                if item_done != bool(item["completed"]):
+                                    update_checklist_item(
+                                        item_id=item["id"],
+                                        completed=item_done,
+                                    )
                                     st.rerun()
 
-                                if delete_clicked:
-                                    delete_task(task["id"])
+                                if st.button(
+                                    "Delete checklist item",
+                                    key=f"delete_checklist_item_{item['id']}",
+                                ):
+                                    delete_checklist_item(item["id"])
                                     st.rerun()
+                        else:
+                            st.caption("No checklist items yet.")
 
-                            st.divider()
-                            st.markdown("**Edit task details**")
+                        with st.form(f"add_checklist_form_{task['id']}"):
+                            new_checklist_text = st.text_input("New checklist item")
+                            add_item_clicked = st.form_submit_button("Add checklist item")
 
-                            priority_options = ["Low", "Medium", "High"]
-
-                            if task["priority"] in priority_options:
-                                priority_index = priority_options.index(task["priority"])
-                            else:
-                                priority_index = 1
-
-                            with st.form(f"edit_task_form_{task['id']}"):
-                                edited_title = st.text_input(
-                                    "Task title",
-                                    value=task["title"],
-                                )
-
-                                edited_description = st.text_area(
-                                    "Description",
-                                    value=task["description"] or "",
-                                )
-
-                                keep_due_date = st.checkbox(
-                                    "Use due date",
-                                    value=bool(task["due_date"]),
-                                )
-
-                                edited_due_date = None
-
-                                if keep_due_date:
-                                    edited_due_date = st.date_input(
-                                        "Due date",
-                                        value=parse_date(task["due_date"]),
+                            if add_item_clicked:
+                                if new_checklist_text.strip():
+                                    add_checklist_item(
+                                        task_id=task["id"],
+                                        text=new_checklist_text.strip(),
                                     )
-
-                                edited_priority = st.selectbox(
-                                    "Priority",
-                                    priority_options,
-                                    index=priority_index,
-                                )
-
-                                edited_assignee = st.text_input(
-                                    "Assignee",
-                                    value=task["assignee"] or "",
-                                )
-
-                                edited_labels = st.text_input(
-                                    "Labels/tags",
-                                    value=task["labels"] or "",
-                                )
-
-                                save_edit_clicked = st.form_submit_button("Save edited task")
-
-                                if save_edit_clicked:
-                                    if edited_title.strip():
-                                        update_task_details(
-                                            task_id=task["id"],
-                                            title=edited_title.strip(),
-                                            description=edited_description.strip(),
-                                            due_date=edited_due_date,
-                                            priority=edited_priority,
-                                            assignee=edited_assignee.strip(),
-                                            labels=edited_labels.strip(),
-                                        )
-                                        st.rerun()
-                                    else:
-                                        st.warning("Task title is required.")
-
-                            st.divider()
-                            st.markdown("**Checklist**")
-
-                            checklist_items = get_checklist_items(task["id"])
-
-                            if checklist_items:
-                                for item in checklist_items:
-                                    item_done = st.checkbox(
-                                        item["text"],
-                                        value=bool(item["completed"]),
-                                        key=f"checklist_item_{item['id']}",
-                                    )
-
-                                    if item_done != bool(item["completed"]):
-                                        update_checklist_item(
-                                            item_id=item["id"],
-                                            completed=item_done,
-                                        )
-                                        st.rerun()
-
-                                    if st.button(
-                                        "Delete checklist item",
-                                        key=f"delete_checklist_item_{item['id']}",
-                                    ):
-                                        delete_checklist_item(item["id"])
-                                        st.rerun()
-                            else:
-                                st.caption("No checklist items yet.")
-
-                            with st.form(f"add_checklist_form_{task['id']}"):
-                                new_checklist_text = st.text_input("New checklist item")
-                                add_item_clicked = st.form_submit_button("Add checklist item")
-
-                                if add_item_clicked:
-                                    if new_checklist_text.strip():
-                                        add_checklist_item(
-                                            task_id=task["id"],
-                                            text=new_checklist_text.strip(),
-                                        )
-                                        st.rerun()
-                                    else:
-                                        st.warning("Checklist item cannot be empty.")
+                                    st.rerun()
+                                else:
+                                    st.warning("Checklist item cannot be empty.")
             else:
                 st.info("No tasks yet.")
