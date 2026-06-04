@@ -124,6 +124,33 @@ def parse_date(date_text):
         return date.today()
 
 
+def filter_tasks(tasks, search, bucket, priority, status):
+    results = tasks
+
+    if search:
+        query = search.lower()
+        results = [
+            t for t in results
+            if query in (t["title"] or "").lower()
+            or query in (t["description"] or "").lower()
+            or query in (t["assignee"] or "").lower()
+            or query in (t["labels"] or "").lower()
+        ]
+
+    if bucket != "All":
+        results = [t for t in results if t["bucket_name"] == bucket]
+
+    if priority != "All":
+        results = [t for t in results if t["priority"] == priority]
+
+    if status == "Completed":
+        results = [t for t in results if t["completed"]]
+    elif status == "Not started":
+        results = [t for t in results if not t["completed"]]
+
+    return results
+
+
 st.set_page_config(
     page_title="Planner App",
     layout="wide"
@@ -241,16 +268,46 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+st.divider()
+
+search_col, bucket_col, priority_col, status_col = st.columns([3, 2, 2, 2])
+
+with search_col:
+    search_query = st.text_input(
+        "Search tasks",
+        placeholder="Search by title, description, assignee, or labels...",
+        label_visibility="collapsed",
+    )
+
+bucket_names_for_filter = ["All"] + [b["name"] for b in buckets]
+
+with bucket_col:
+    filter_bucket = st.selectbox("Bucket", bucket_names_for_filter)
+
+with priority_col:
+    filter_priority = st.selectbox("Priority", ["All", "Low", "Medium", "High"])
+
+with status_col:
+    filter_status = st.selectbox("Status", ["All", "Not started", "Completed"])
+
+filtered_tasks = filter_tasks(tasks, search_query, filter_bucket, filter_priority, filter_status)
+
+filters_active = search_query or filter_bucket != "All" or filter_priority != "All" or filter_status != "All"
+if filters_active:
+    st.caption(f"{len(filtered_tasks)} of {len(tasks)} task(s) shown")
+
+st.divider()
+
 tab1, tab2 = st.tabs(["Grid", "Board"])
 
 
 with tab1:
     st.subheader("Grid View")
 
-    if tasks:
+    if filtered_tasks:
         task_rows = []
 
-        for task in tasks:
+        for task in filtered_tasks:
             completed_items, total_items = get_checklist_progress(task["id"])
 
             task_rows.append({
@@ -266,7 +323,10 @@ with tab1:
 
         st.dataframe(task_rows, use_container_width=True)
     else:
-        st.info("No tasks yet. Add a task from the Board view.")
+        if tasks:
+            st.info("No tasks match your search or filters.")
+        else:
+            st.info("No tasks yet. Add a task from the Board view.")
 
 
 with tab2:
@@ -277,7 +337,7 @@ with tab2:
     for index, bucket in enumerate(buckets):
         with columns[index]:
             bucket_tasks = [
-                task for task in tasks
+                task for task in filtered_tasks
                 if task["bucket_id"] == bucket["id"]
             ]
 
