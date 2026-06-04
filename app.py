@@ -151,6 +151,21 @@ def filter_tasks(tasks, search, bucket, priority, status):
     return results
 
 
+def get_summary(tasks):
+    today = date.today()
+    total = len(tasks)
+    completed_count = sum(1 for t in tasks if t["completed"])
+    not_started = sum(1 for t in tasks if not t["completed"])
+    high_priority = sum(1 for t in tasks if t["priority"] == "High")
+    overdue = sum(
+        1 for t in tasks
+        if t["due_date"]
+        and not t["completed"]
+        and datetime.strptime(t["due_date"], "%Y-%m-%d").date() < today
+    )
+    return total, completed_count, not_started, high_priority, overdue
+
+
 st.set_page_config(
     page_title="Planner App",
     layout="wide"
@@ -295,6 +310,15 @@ filtered_tasks = filter_tasks(tasks, search_query, filter_bucket, filter_priorit
 filters_active = search_query or filter_bucket != "All" or filter_priority != "All" or filter_status != "All"
 if filters_active:
     st.caption(f"{len(filtered_tasks)} of {len(tasks)} task(s) shown")
+
+total, completed_count, not_started, high_priority, overdue = get_summary(filtered_tasks)
+
+c1, c2, c3, c4, c5 = st.columns(5)
+c1.metric("Total tasks", total)
+c2.metric("Completed", completed_count)
+c3.metric("Not started", not_started)
+c4.metric("High priority", high_priority)
+c5.metric("Overdue", overdue)
 
 st.divider()
 
