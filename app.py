@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from html import escape
 
+import pandas as pd
 import streamlit as st
 
 from database import (
@@ -322,7 +323,7 @@ c5.metric("Overdue", overdue)
 
 st.divider()
 
-tab1, tab2 = st.tabs(["Grid", "Board"])
+tab1, tab2, tab3 = st.tabs(["Grid", "Board", "Charts"])
 
 
 with tab1:
@@ -598,3 +599,62 @@ with tab2:
                                     st.warning("Checklist item cannot be empty.")
             else:
                 st.info("No tasks yet.")
+
+
+with tab3:
+    st.subheader("Charts View")
+
+    if not filtered_tasks:
+        if tasks:
+            st.info("No tasks match your search or filters.")
+        else:
+            st.info("No tasks yet. Add a task from the Board view.")
+    else:
+        row1_left, row1_right = st.columns(2)
+
+        with row1_left:
+            st.markdown("**Tasks by Bucket**")
+            bucket_data = {
+                b["name"]: sum(1 for t in filtered_tasks if t["bucket_id"] == b["id"])
+                for b in buckets
+            }
+            st.bar_chart(pd.Series(bucket_data))
+
+        with row1_right:
+            st.markdown("**Tasks by Priority**")
+            priority_data = {
+                "Low":    sum(1 for t in filtered_tasks if t["priority"] == "Low"),
+                "Medium": sum(1 for t in filtered_tasks if t["priority"] == "Medium"),
+                "High":   sum(1 for t in filtered_tasks if t["priority"] == "High"),
+            }
+            st.bar_chart(pd.Series(priority_data))
+
+        row2_left, row2_right = st.columns(2)
+
+        with row2_left:
+            st.markdown("**Tasks by Status**")
+            status_data = {
+                "Not started": sum(1 for t in filtered_tasks if not t["completed"]),
+                "Completed":   sum(1 for t in filtered_tasks if t["completed"]),
+            }
+            st.bar_chart(pd.Series(status_data))
+
+        with row2_right:
+            st.markdown("**Checklist Completion**")
+            total_checklist_items = 0
+            total_checklist_done = 0
+            for task in filtered_tasks:
+                done, total = get_checklist_progress(task["id"])
+                total_checklist_done += done
+                total_checklist_items += total
+
+            if total_checklist_items > 0:
+                checklist_data = {
+                    "Done":      total_checklist_done,
+                    "Remaining": total_checklist_items - total_checklist_done,
+                }
+                st.bar_chart(pd.Series(checklist_data))
+                st.progress(total_checklist_done / total_checklist_items)
+                st.caption(f"{total_checklist_done} of {total_checklist_items} checklist items completed")
+            else:
+                st.info("No checklist items yet.")
